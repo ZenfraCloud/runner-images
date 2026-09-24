@@ -1,12 +1,18 @@
 # ABOUTME: Weekly base-image digest and action version updates
-# ABOUTME: A new flavour needs its own docker entry; the workflow matrices find it on their own
+# ABOUTME: A new flavour needs its directory listed here; the workflow matrices find it on their own
 
 version: 2
 updates:
+  # One PR per base bump across every flavour, so their bases cannot drift apart.
   - package-ecosystem: docker
-    directory: /images/tf
+    directories:
+      - /images/opentofu
+      - /images/terraform
     schedule:
       interval: weekly
+    groups:
+      base-images:
+        group-by: dependency-name
   # "/" covers .github/workflows only; composite actions need their own directories.
   - package-ecosystem: github-actions
     directories:

@@ -31,6 +31,9 @@ git --version
 curl --version
 jq --version
 test -s /etc/ssl/certs/ca-certificates.crt
+# The worker mounts the stack's binary; one baked in would be shadowed and misleading.
+test -z "$(command -v terraform)"
+test -z "$(command -v tofu)"
 python3 -m venv "$HOME/venv"
 "$HOME/venv/bin/python" -m pip --version
 echo ok > "$HOME/sentinel"

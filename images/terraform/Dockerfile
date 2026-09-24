@@ -1,4 +1,4 @@
-# ABOUTME: tf runner image: pinned Alpine plus python3, pip, curl, git and jq; no IaC binary baked in
+# ABOUTME: terraform runner image: pinned Alpine plus python3, pip, curl, git and jq; no Terraform binary baked in
 # ABOUTME: Sandbox base for Zenfra workers; the sandbox supplies user, workdir, HOME and the command
 
 # The apk stage is named "base" so a scheduled rebuild can re-run it with --no-cache-filter=base.
@@ -30,7 +30,7 @@ ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_NO_CACHE_DIR=1
 
 # base.name and base.digest are added at publish time from the FROM line above.
-LABEL org.opencontainers.image.title="zenfra-runner-tf" \
+LABEL org.opencontainers.image.title="zenfra-runner-terraform" \
       org.opencontainers.image.source="https://github.com/ZenfraCloud/runner-images" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${COMMIT}"
