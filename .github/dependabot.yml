@@ -1,0 +1,13 @@
+# ABOUTME: Weekly base-image digest and action version updates
+# ABOUTME: A new flavour needs its own docker entry; the workflow matrices find it on their own
+
+version: 2
+updates:
+  - package-ecosystem: docker
+    directory: /images/tf
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
