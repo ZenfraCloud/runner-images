@@ -1,19 +1,24 @@
-<!-- ABOUTME: What the tf runner image contains, how to build and smoke it locally, and its release evidence -->
+<!-- ABOUTME: What the terraform runner image contains, how to build and smoke it locally, and its release evidence -->
 <!-- ABOUTME: Tags, patch cadence and the customization guide live in the repository README -->
 
-# zenfra-runner-tf
+# zenfra-runner-terraform
 
-Sandbox base for Zenfra workers running OpenTofu or Terraform stacks: Alpine
+Sandbox base for Zenfra workers running Terraform stacks: Alpine
 3.24 (digest-pinned) plus `python3`, `py3-pip`, `curl`, `git`, `jq` and
 `ca-certificates`. No USER, ENTRYPOINT or CMD of its own (the sandbox passes
 its own user and command).
 
-`tf` names the family, not a binary: neither OpenTofu nor Terraform is in the
-image. The worker mounts the binary the stack asks for, read-only and on
-`PATH`. No scanners either: hooks install them into the workspace, for
-example into a venv under `$HOME`.
+The `terraform` binary is not in the image: the worker downloads the version the
+stack asks for and mounts it read-only on `PATH`, and the smoke test asserts
+that none is baked in. No scanners either: hooks install them into the
+workspace, for example into a venv under `$HOME`.
 
-Published as `ghcr.io/zenfracloud/zenfra-runner-tf` for `linux/amd64` and
+Its contents are currently the same as `zenfra-runner-opentofu`; the two are
+separate packages so each can gain tool-specific extras. A worker uses one
+sandbox image for every run it executes, whichever tool the stack uses, so
+either image runs either tool today.
+
+Published as `ghcr.io/zenfracloud/zenfra-runner-terraform` for `linux/amd64` and
 `linux/arm64`; see the [repository README](../../README.md) for tags and
 the patch cadence.
 
@@ -21,8 +26,8 @@ the patch cadence.
 
 ```bash
 for p in amd64 arm64; do
-  docker buildx build --platform linux/$p --load -t zenfra-runner-tf:local-$p images/tf
-  images/tf/smoke.sh zenfra-runner-tf:local-$p linux/$p
+  docker buildx build --platform linux/$p --load -t zenfra-runner-terraform:local-$p images/terraform
+  images/terraform/smoke.sh zenfra-runner-terraform:local-$p linux/$p
 done
 ```
 

@@ -18,11 +18,13 @@ Each flavour lives in `images/<flavour>/` and is published as its own package,
 
 | Flavour | Package | Contents |
 |---|---|---|
-| [`tf`](images/tf/README.md) | `ghcr.io/zenfracloud/zenfra-runner-tf` | Alpine 3.24 (digest-pinned) + `python3`, `py3-pip`, `curl`, `git`, `jq`, `ca-certificates` |
+| [`opentofu`](images/opentofu/README.md) | `ghcr.io/zenfracloud/zenfra-runner-opentofu` | Alpine 3.24 (digest-pinned) + `python3`, `py3-pip`, `curl`, `git`, `jq`, `ca-certificates` |
+| [`terraform`](images/terraform/README.md) | `ghcr.io/zenfracloud/zenfra-runner-terraform` | Same as `opentofu`, for now |
 
-`tf` is a family name for OpenTofu and Terraform stacks. Neither binary is
-baked into the image: the worker mounts the OpenTofu or Terraform binary the
-stack asks for, read-only and on `PATH`.
+Neither image contains the OpenTofu or Terraform binary: the worker downloads
+the version the stack asks for and mounts it read-only on `PATH`. The two are
+separate packages so each can gain tool-specific extras; today a worker uses
+one sandbox image for all its runs, so either image runs either tool.
 
 ## Tags
 
@@ -35,7 +37,7 @@ stack asks for, read-only and on `PATH`.
   and is never a digest that failed the smoke on either architecture.
 
 For anything you depend on, pin the digest, not a tag:
-`ghcr.io/zenfracloud/zenfra-runner-tf@sha256:…`.
+`ghcr.io/zenfracloud/zenfra-runner-<flavour>@sha256:…`.
 
 ## Patch cadence
 
@@ -51,7 +53,7 @@ design. The published digest is the repeatable unit; pin it.
 ## Building on an image
 
 ```dockerfile
-FROM ghcr.io/zenfracloud/zenfra-runner-tf@sha256:…
+FROM ghcr.io/zenfracloud/zenfra-runner-opentofu@sha256:…
 RUN apk add --no-cache aws-cli
 ```
 
@@ -73,6 +75,7 @@ What the sandbox does with your image, and what that means for it:
 ```
 images/<flavour>/{Dockerfile,smoke.sh,README.md}
 scripts/flavours.sh                        # flavour list for the workflow matrices
+scripts/smoke.sh                           # the shared smoke checks each flavour's smoke.sh runs
 scripts/promote.sh                         # the guarded promotion of a candidate to latest
 .github/actions/publish-image/             # candidate build, smoke, scan, promote
 .github/workflows/build.yml                # pull requests: build and smoke each flavour on both arches
@@ -80,8 +83,9 @@ scripts/promote.sh                         # the guarded promotion of a candidat
 ```
 
 A new flavour is a new `images/<flavour>/` directory with a `Dockerfile` and a
-`smoke.sh <image> [platform]`; both workflows pick it up. It also needs a
-Dependabot `docker` entry for its directory.
+`smoke.sh <image> [platform]` (usually a wrapper around `scripts/smoke.sh`);
+both workflows pick it up. It also needs its directory added to the Dependabot
+`docker` entry.
 
 ## License
 
