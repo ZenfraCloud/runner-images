@@ -1,0 +1,130 @@
+# ABOUTME: Publishes one flavour: candidate build and push, smoke per platform, Trivy report, guarded promotion
+# ABOUTME: The calling job owns checkout, permissions, concurrency and the matrix; inputs are strings
+
+name: Publish image
+description: Build and push a candidate, smoke it on amd64 and arm64, scan it, and promote it to latest.
+
+inputs:
+  flavour:
+    description: Directory under images/ to build.
+    required: true
+  image:
+    description: Package to publish, without a tag.
+    required: true
+  refresh-packages:
+    description: The literal 'true' re-runs the apk stage (named base) uncached.
+    required: false
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    - uses: docker/setup-qemu-action@v4
+
+    - uses: docker/setup-buildx-action@v4
+
+    - uses: docker/login-action@v4
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
+
+    - name: Candidate tag and base
+      id: meta
+      shell: sh
+      env:
+        FLAVOUR: ${{ inputs.flavour }}
+      run: |
+        set -eu
+        echo "tag=$(date -u +%Y%m%d)-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+        # The FROM of the stage named base, e.g. alpine:3.24@sha256:...
+        from=$(awk 'toupper($1) == "FROM" && tolower($3) == "as" && $4 == "base" { print $2 }' "images/${FLAVOUR}/Dockerfile")
+        case $from in *@sha256:*) ;; *) echo "::error::images/${FLAVOUR}/Dockerfile: no digest-pinned FROM ... AS base"; exit 1 ;; esac
+        echo "base_name=${from%@*}" >> "$GITHUB_OUTPUT"
+        echo "base_digest=${from#*@}" >> "$GITHUB_OUTPUT"
+
+    - name: Build and push the candidate
+      id: build
+      uses: docker/build-push-action@v7
+      with:
+        context: images/${{ inputs.flavour }}
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: ${{ inputs.image }}:${{ steps.meta.outputs.tag }}
+        no-cache-filters: ${{ inputs.refresh-packages == 'true' && 'base' || '' }}
+        build-args: |
+          VERSION=${{ steps.meta.outputs.tag }}
+          COMMIT=${{ github.sha }}
+        labels: |
+          org.opencontainers.image.base.name=${{ steps.meta.outputs.base_name }}
+          org.opencontainers.image.base.digest=${{ steps.meta.outputs.base_digest }}
+        cache-from: type=gha,scope=${{ inputs.flavour }}
+        cache-to: type=gha,mode=max,ignore-error=true,scope=${{ inputs.flavour }}
+
+    # Both platforms always run, so one failure does not hide the other; passed is
+    # the literal true only when both smoked clean.
+    - name: Smoke each platform
+      id: smoke
+      shell: sh
+      env:
+        FLAVOUR: ${{ inputs.flavour }}
+        REF: ${{ inputs.image }}@${{ steps.build.outputs.digest }}
+      run: |
+        passed=true
+        for arch in amd64 arm64; do
+          if docker pull --platform "linux/${arch}" "$REF" && "images/${FLAVOUR}/smoke.sh" "$REF" "linux/${arch}"; then
+            echo "size_${arch}=$(docker image inspect --format '{{.Size}}' "$REF")" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::smoke failed on linux/${arch} for ${REF}"
+            passed=false
+          fi
+        done
+        echo "passed=${passed}" >> "$GITHUB_OUTPUT"
+
+    # Reporting only: findings never fail the job and never block promotion.
+    - name: Trivy
+      continue-on-error: true
+      uses: aquasecurity/trivy-action@v0.36.0
+      with:
+        image-ref: ${{ inputs.image }}@${{ steps.build.outputs.digest }}
+        format: sarif
+        output: trivy-${{ inputs.flavour }}.sarif
+
+    - name: Upload Trivy results
+      continue-on-error: true
+      uses: github/codeql-action/upload-sarif@v4
+      with:
+        sarif_file: trivy-${{ inputs.flavour }}.sarif
+        category: trivy-${{ inputs.flavour }}
+
+    - name: Promote to latest
+      id: promote
+      shell: sh
+      env:
+        IMAGE: ${{ inputs.image }}
+        DIGEST: ${{ steps.build.outputs.digest }}
+        SMOKE_PASSED: ${{ steps.smoke.outputs.passed }}
+      run: scripts/promote.sh "$IMAGE" "$DIGEST" "$GITHUB_SHA" "$SMOKE_PASSED"
+
+    - name: Summary
+      if: ${{ always() && steps.build.outputs.digest != '' }}
+      shell: sh
+      env:
+        IMAGE: ${{ inputs.image }}
+        TAG: ${{ steps.meta.outputs.tag }}
+        DIGEST: ${{ steps.build.outputs.digest }}
+        BASE: ${{ steps.meta.outputs.base_name }}@${{ steps.meta.outputs.base_digest }}
+        SIZE_AMD64: ${{ steps.smoke.outputs.size_amd64 || 'smoke failed' }}
+        SIZE_ARM64: ${{ steps.smoke.outputs.size_arm64 || 'smoke failed' }}
+        PROMOTED: ${{ steps.promote.outputs.promoted == 'true' && 'yes' || 'no' }}
+      run: |
+        {
+          echo "### ${IMAGE}"
+          echo
+          echo "- **Source:** \`${GITHUB_SHA}\`"
+          echo "- **Base:** \`${BASE}\`"
+          echo "- **Candidate:** \`${IMAGE}:${TAG}\`"
+          echo "- **Digest:** \`${DIGEST}\`"
+          echo "- **Size:** linux/amd64 ${SIZE_AMD64} bytes, linux/arm64 ${SIZE_ARM64} bytes"
+          echo "- **Promoted to latest:** ${PROMOTED}"
+        } >> "$GITHUB_STEP_SUMMARY"
