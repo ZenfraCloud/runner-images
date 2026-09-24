@@ -1,0 +1,60 @@
+# ABOUTME: Publishes every flavour from main: candidate tag, smoke on both arches, promotion to latest
+# ABOUTME: A dispatch from any other ref runs the pull request lane instead and pushes nothing
+
+name: Publish
+
+on:
+  push:
+    branches: [main]
+  # Weekly package refresh: rebuilds the apk stage uncached, then publishes like a push.
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  setup:
+    name: Flavours
+    runs-on: ubuntu-latest
+    outputs:
+      flavours: ${{ steps.list.outputs.flavours }}
+      # push is filtered to main and schedule always runs on main, so only a
+      # dispatch can come from another ref.
+      publish: ${{ github.ref == 'refs/heads/main' }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: list
+        run: echo "flavours=$(scripts/flavours.sh)" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build without publishing
+    needs: setup
+    if: needs.setup.outputs.publish != 'true'
+    uses: ./.github/workflows/build.yml
+
+  publish:
+    name: Publish ${{ matrix.flavour }}
+    needs: setup
+    if: needs.setup.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        flavour: ${{ fromJSON(needs.setup.outputs.flavours) }}
+    # One publication per flavour at a time; a newer pending run replaces an older pending one.
+    concurrency:
+      group: publish-${{ matrix.flavour }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/publish-image
+        with:
+          flavour: ${{ matrix.flavour }}
+          image: ghcr.io/zenfracloud/zenfra-runner-${{ matrix.flavour }}
+          refresh-packages: ${{ github.event_name == 'schedule' }}
