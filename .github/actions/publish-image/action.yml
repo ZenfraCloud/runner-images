@@ -39,7 +39,11 @@ runs:
         echo "tag=$(date -u +%Y%m%d)-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
         # The FROM of the stage named base, e.g. alpine:3.24@sha256:...
         from=$(awk 'toupper($1) == "FROM" && tolower($3) == "as" && $4 == "base" { print $2 }' "images/${FLAVOUR}/Dockerfile")
-        case $from in *@sha256:*) ;; *) echo "::error::images/${FLAVOUR}/Dockerfile: no digest-pinned FROM ... AS base"; exit 1 ;; esac
+        case $from in
+          *[[:space:]]*|'') echo "::error::images/${FLAVOUR}/Dockerfile: want exactly one FROM ... AS base, got '${from}'"; exit 1 ;;
+          *@sha256:*) ;;
+          *) echo "::error::images/${FLAVOUR}/Dockerfile: FROM ... AS base is not digest-pinned"; exit 1 ;;
+        esac
         echo "base_name=${from%@*}" >> "$GITHUB_OUTPUT"
         echo "base_digest=${from#*@}" >> "$GITHUB_OUTPUT"
 

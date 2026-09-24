@@ -25,6 +25,8 @@ jobs:
       publish: ${{ github.ref == 'refs/heads/main' }}
     steps:
       - uses: actions/checkout@v7
+      # The guard on latest; cheap enough to gate every run on it.
+      - run: sh scripts/promote_test.sh
       - id: list
         run: echo "flavours=$(scripts/flavours.sh)" >> "$GITHUB_OUTPUT"
 
