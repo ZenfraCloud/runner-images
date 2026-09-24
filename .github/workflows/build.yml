@@ -1,0 +1,54 @@
+# ABOUTME: Builds every flavour for linux/amd64 and linux/arm64 and runs its smoke test; pushes nothing
+# ABOUTME: The pull request gate, and the publish lane's no-push path for a dispatch from a non-main ref
+
+name: Build
+
+on:
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  setup:
+    name: Flavours
+    runs-on: ubuntu-latest
+    outputs:
+      flavours: ${{ steps.list.outputs.flavours }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: list
+        run: echo "flavours=$(scripts/flavours.sh)" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: ${{ matrix.flavour }} (${{ matrix.arch }})
+    needs: setup
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        flavour: ${{ fromJSON(needs.setup.outputs.flavours) }}
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-qemu-action@v4
+        if: matrix.arch != 'amd64'
+
+      - uses: docker/setup-buildx-action@v4
+
+      # One platform per job: load: true cannot load a multi-platform result.
+      - name: Build
+        uses: docker/build-push-action@v7
+        with:
+          context: images/${{ matrix.flavour }}
+          platforms: linux/${{ matrix.arch }}
+          load: true
+          push: false
+          tags: zenfra-runner-${{ matrix.flavour }}:ci-${{ matrix.arch }}
+          cache-from: type=gha,scope=${{ matrix.flavour }}-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,ignore-error=true,scope=${{ matrix.flavour }}-${{ matrix.arch }}
+
+      - name: Smoke
+        run: images/${{ matrix.flavour }}/smoke.sh zenfra-runner-${{ matrix.flavour }}:ci-${{ matrix.arch }} linux/${{ matrix.arch }}
