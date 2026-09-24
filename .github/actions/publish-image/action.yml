@@ -82,6 +82,9 @@ runs:
             echo "::error::smoke failed on linux/${arch} for ${REF}"
             passed=false
           fi
+          # The classic image store keeps one platform per reference: drop this one so the
+          # next platform's pull of the same digest does not fail with "cannot overwrite digest".
+          docker image rm "$REF" >/dev/null 2>&1 || true
         done
         echo "passed=${passed}" >> "$GITHUB_OUTPUT"
 
