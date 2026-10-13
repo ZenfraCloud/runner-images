@@ -23,8 +23,11 @@ Each flavour lives in `images/<flavour>/` and is published as its own package,
 
 Neither image contains the OpenTofu or Terraform binary: the worker downloads
 the version the stack asks for and mounts it read-only on `PATH`. The two are
-separate packages so each can gain tool-specific extras; today a worker uses
-one sandbox image for all its runs, so either image runs either tool.
+separate packages so each can gain tool-specific extras; today either image
+runs either tool. A worker uses its configured image for every run unless the
+stack names its own runner image, pinned by digest (see
+[Runner image](https://docs.zenfra.cloud/concepts/stacks/#runner-image)); on
+the Public Worker Pool only these images are accepted.
 
 ## Tags
 
@@ -63,8 +66,10 @@ What the sandbox does with your image, and what that means for it:
   project directory in the workspace) and `HOME` (inside the workspace), so a
   `USER`, `WORKDIR` or `HOME` in your image is overridden.
 - It appends the command after the image name, which replaces any `CMD`.
-- It never overrides `ENTRYPOINT`. Leave `ENTRYPOINT` unset: if you set one,
-  it receives the sandbox's command as its arguments.
+- A worker that lists `runner-image-v1` under **Capabilities** replaces the
+  `ENTRYPOINT`: the tool, or `sh` for a hook, is the container's entrypoint,
+  so an `ENTRYPOINT` in your image never runs. On an older worker leave
+  `ENTRYPOINT` unset, or it receives the sandbox's command as its arguments.
 - Install system-wide at build time. Anything a hook installs at run time
   (a venv under `$HOME`, a downloaded binary in the workspace) lasts for one
   execution of the run: not across the handoff to the apply after approval,
